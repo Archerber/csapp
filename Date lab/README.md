@@ -120,26 +120,10 @@ int isLessOrEqual(int x, int y) {
 ```
 
 ## 9.实现!运算符 ##
-原理只有0这种情况为1，而0的每一位都为0，再取反，就全为1，
-思路：先取反，再判断每一位(数量超了......)
+原理是~ 0 + 1 = 0,0取相反数还是0，符号位还是0，而别的数符号位为1，0或1，1的组合
 ```c
 int logicalNeg(int x) {
-  int var=~x;
-  int var1=var&1;
-  var1=var1 & var>>1&1 & var>>2&1 & var>>3&1;
-  var1=var1 & var>>4&1 & var>>5&1 & var>>6&1;
-  var1=var1 & var>>7&1 & var>>8&1 & var>>9&1;
-  var1=var1 & var>>10&1 & var>>11&1 & var>>12&1;
-  var=var>>12;
-  var1=var1 & var>>1&1 & var>>2&1 & var>>3&1;
-  var1=var1 & var>>4&1 & var>>5&1 & var>>6&1;
-  var1=var1 & var>>7&1 & var>>8&1 & var>>9&1;
-  var1=var1 & var>>10&1 & var>>11&1 & var>>12&1;
-  var=var>>12;
-  var1=var1 & var>>1&1 & var>>2&1 & var>>3&1;
-  var1=var1 & var>>4&1 & var>>5&1 & var>>6&1;
-  var1=var1 & var>>7&1;
-  return var1;
+ return ((x>>31)&1|((~x+1)>>31)&1)^1;
 }
 ```
 
