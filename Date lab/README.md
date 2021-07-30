@@ -130,6 +130,38 @@ int logicalNeg(int x) {
 ## 10.返回x用补码表示的最小位数 ##
 这个题实在是没有什么思路
 
+### 11.返回2* f(浮点数) ###
+这个题写了一两天人麻了，
+关于浮点数，float的话，1位表正负(s)，8位表示阶码(e)，还有23位表示小数位(f)
+```c
+unsigned floatScale2(unsigned uf) {
+  unsigned s=((uf>>31)<<31);
+  unsigned v=(0x1ff)<<23;
+  unsigned temp=uf<<1;
+  temp=temp>>24;//temp 表示 e
+  unsigned var=uf<<9;//var 表示 小数位
+  if((temp==255&&(((var>>31)&1)==1||var==0))){
+  		return uf;//判断NaN的情况，以及0x7f800000
+  }
+  else{
+	  if(var==0){//小数位为0
+	  	  if(temp==0) //判断1000   0000 …… 0000
+			return uf;  
+	  	  temp+=1;//*2
+		  temp=temp<<23;
+		  return temp|s;//符号位
+      }
+  	  else{
+  	  	if(temp==0){//exp为0
+			return 2*uf|s;//82
+		}
+  	  	return (((temp+1)<<23)+(var>>9))|s;//exp不为0,小数位不变
+		}
+  	  
+  }
+}
+```
+
 ## buu ##
 ### 1.wustctf2020_easyfast ###
 这个题思路很简单，只要把0x602090改为0就可以了，可以直接通过uaf和fastbinattack，在0x6020080处分配内存，但是这个地方理论上是分配不了的，因为大小为0x50,后一位是0,待解决
