@@ -12,6 +12,17 @@ csapp的实验确实有点东西，感觉学到了不少东西
 				  算术右移(考虑符号位，是什么补什么) 如 1001 >> 2 = 1110
 	<<: 左移运算符 如 1001 1001 << = 0110 0100
 
+## 浮点数 ##
+计算方法float=(-1)^s * M * 2^E 
+float的表示方法，1个二进制位表示符号s，8个二进制位表示阶码(e为无符号数)，23个二进制位表示小数部分(f)
+(规格化数，即e!=0,且e!=255)E = e - Bias		Bias =2^(k-1) - 1,
+举个栗子，e 为 1111  1110 ,此时 Bias = 127, e = 254 - 127 = 127
+假设 M 为 1 00 0000 0000 0000 0000 0000
+M = 1 + f ，f部分为f = 1 * 2^-1  …… + 0 = 0.5
+用小数点表示 M 即 1.100000……000
+(非规格化数)E = 1 - Bias, M = f = 1
+
+
 ### 1.xor ###
 题目要求只是用 ~ 和 & 来实现 异或 即 ^, 本质就是相同位取1、不同位取0，而每一位又只有0或1，
 感觉我是试出来的
@@ -133,6 +144,10 @@ int logicalNeg(int x) {
 ### 11.返回2* f(浮点数) ###
 这个题写了一两天人麻了，
 关于浮点数，float的话，1位表正负(s)，8位表示阶码(e)，还有23位表示小数位(f)
+* 2有三种情况:
+	1.返回它本身，如NaN,0,1<<31……
+	2.是e部分* 2
+	3.小数位* 2(e部分为0)
 ```c
 unsigned floatScale2(unsigned uf) {
   unsigned s=((uf>>31)<<31);
@@ -162,7 +177,49 @@ unsigned floatScale2(unsigned uf) {
 }
 ```
 
+### 12.返回int(float) ###
+感觉上面那个题能写出来，这个也能写出来
+float返回int，主要就是超出范围，还有NaN，返回0x80000000,然后根据exp部分的大小计算就可以了
+并且exp部分最大为(规范化数)，511，当 511 - 256 ( 2 * 7 - 1 ) >= 32 时，int就无法表达了，这时
+需要返回0x80000000,而属于int范围中的数直接将temp转化成整数，大于127再算2^temp就可以了
+```c
+int floatScale2(unsigned uf) {
+  unsigned s=uf>>31;
+  unsigned v=(0x1ff)<<23;
+  unsigned temp=uf<<1;
+  temp=temp>>24;
+  unsigned var=uf<<9;
+  int re=temp;
+  int count=0;
+  int result=1;
+  if(re==0)
+	return 0;
+  else{
+  	if(re==255)
+  		return 1<<31;
+  	else{
+  		re-=127;
+  		if(re<0)
+  		return 0;
+		if(re>=32)
+		return 1<<31;
+  		while(re>0){
+  			result*=2;
+  			re--;
+		  }
+		  if(s==1){
+		  	return result*-1;
+		  }
+		  else return result;
+  		
+	}
+  }
+}
+```
+
+
 ## buu ##
+
 ### 1.wustctf2020_easyfast ###
 这个题思路很简单，只要把0x602090改为0就可以了，可以直接通过uaf和fastbinattack，在0x6020080处分配内存，但是这个地方理论上是分配不了的，因为大小为0x50,后一位是0,待解决
 ```python
