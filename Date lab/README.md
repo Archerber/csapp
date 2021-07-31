@@ -257,6 +257,7 @@ unsigned floatPower2(int x) {
 	return e << 23;
 }
 ```
+最后得分28分，就差两个题......
 
 ## buu ##
 
