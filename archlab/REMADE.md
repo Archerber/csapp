@@ -280,73 +280,203 @@ word aluB = [
 #类似于IOPQ
 bool set_cc = icode in { IOPQ, IIADDQ };
 ```
-运行结果如图
 
 ### part-C ###
 优化步骤:
 	1.尽量使用iaddq
 	2.循环展开
+c代码如下:
+```c
+#include <stdio.h>
+
+typedef word_t word_t;
+
+word_t src[8], dst[8];
+
+word_t ncopy(word_t *src, word_t *dst, word_t len)
+{
+    word_t count = 0;
+    word_t val;
+
+
+    while (len > 0) {
+
+    	if(len == 1) {
+			val = *src++;
+			*dst++ = val;
+			if (val > 0)
+			    count++;
+			len--;
+		}
+		val = *src++;
+		*dst++ = val;
+		if (val > 0)
+		    count++;
+		val = *src++;
+		*dst++ = val;
+		if (val > 0)
+		    count++;
+		len -= 2;
+		
+    }
+    return count;
+}
+```
 如下
 ```sh
 ncopy:
-	iaddq $-4,%rdx		# length -= 4
-	jl REM
-
-Loop:
-    mrmovq (%rdi), %r10	# read val from src...
-	mrmovq 8(%rdi),%r11
-	rmmovq %r10, (%rsi)	# ...and store it to dst
-	andq %r10, %r10		# val <= 0?
-	jle Npos		# if so, goto Npos:
-	iaddq $1,%rax
-
-Npos:
-	rmmovq %r11,8(%rsi)
-	andq %r11,%r11
-	jle Npos2
-	iaddq $1,%rax
-Npos2:
-	mrmovq 16(%rdi),%r10
-	mrmovq 24(%rdi),%r11
-	rmmovq %r10, 16(%rsi)
-	andq %r10,%r10
-	jle Npos3
-	iaddq $1,%rax
-Npos3:
-	rmmovq %r11,24(%rsi)
-	andq %r11,%r11
-	jle nLoop
-	iaddq $1,%rax
-nLoop:
-	iaddq $32,%rdi
-	iaddq $32,%rsi
-	iaddq $-4,%rdx
-	jge Loop
-REM:
-	iaddq $3,%rdx
-	jl Done
-    mrmovq (%rdi), %r10
-	mrmovq 8(%rdi),%r11
-	rmmovq %r10, (%rsi)
-	andq %r10,%r10
-	jle RENPO
-	iaddq $1,%rax
-RENPO:
-	iaddq $-1,%rdx
-	jl Done
-	rmmovq %r11,8(%rsi)
-	andq %r11,%r11
-	jle RENPO1
-	iaddq $1,%rax
-RENPO1:
-	iaddq $-1,%rdx
-	jl Done
-    mrmovq 16(%rdi), %r10
-	rmmovq %r10, 16(%rsi)
-	andq %r10,%r10
+	iaddq $0,%rdx
 	jle Done
-	iaddq $1,%rax
+Loop:
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	andq %r10, %r10 # val <= 0?
+	jle Npos # if so, goto Npos:
+	iaddq $1, %rax
+Npos:
+	iaddq $8, %rdi
+	iaddq $8, %rsi
+	iaddq $-1, %rdx
+	jg Loop
 Done:
 	ret
+```
+三次展开(jg> , jge >= , jle <=,  je <):
+```sh
+ncopy:
+	andq %rdx, %rdx
+	jle Done # len <= 0 -> Done rdx = 1 || rdx = 2 || rdx = 3
+	iaddq $-3, %rdx # rdx -= 3
+	jge L3
+L0: # rdx == -1 || rdx == -2
+	iaddq $2, %rdx
+	jg L1 #
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	andq %r10, %r10 # val <= 0?
+	jle Done
+	iaddq $1, %rax
+	ret
+L1:
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	mrmovq $8(%rdi), %r11
+	rmmovq %r11, $8(%rsi)
+	andq %r10, %r10
+	jle L2
+	iaddq $1, %rax
+L2:
+	andq %r11, %r11
+	jle Done
+	iaddq $1, %rax
+	ret
 
+L3:
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	mrmovq $8(%rdi), %r11
+	rmmovq %r11, $8(%rsi)
+	mrmovq $16(%rdi), %r12
+	rmmovq %r12, $16(%rsi)
+	andq %r10, %r10
+	jle L4
+	iaddq $1, %rax
+L4:
+	andq %r11, %r11
+	jle L5
+	iaddq $1, %rax
+L5:
+	andq %r12, %r12
+	jle L6
+	iaddq $1, %rax
+L6:	
+	iaddq $24, %rdi
+	iaddq $24, %rsi
+	iaddq $0, %rdx
+	jg ncopy
+Done:
+	ret
+```
+四次展开:
+```sh
+ncopy:
+	andq %rdx, %rdx
+	jle Done # len <= 0 -> Done rdx = 1 || rdx = 2 || rdx = 3
+	iaddq $-4, %rdx # rdx -= 3
+	jge L4
+L0: # rdx == -1 || rdx == -2 || rdx == -3
+	iaddq $2, %rdx
+	jg L1
+	iaddq $1, %rdx
+	jg L22
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)	
+	andq %r10, %r10 # val <= 0?
+	jle Done
+	iaddq $1, %rax
+	ret
+L22: #2
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	mrmovq $8(%rdi), %r11
+	rmmovq %r11, $8(%rsi)
+	andq %r10, %r10
+	jle L23
+	iaddq $1, %rax
+L23:
+	andq %r11, %r11
+	jle Done
+	iaddq $1, %rax
+	ret
+L1: # 3
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	mrmovq $8(%rdi), %r11
+	rmmovq %r11, $8(%rsi)
+	mrmovq $16(%rdi), %r12
+	rmmovq %r12, $16(%rsi)
+	andq %r10, %r10
+	jle L2
+	iaddq $1, %rax
+L2:
+	andq %r11, %r11
+	jle L3
+	iaddq $1, %rax
+L3:
+	andq %r12, %r12
+	jle Done
+	iaddq $1, %rax
+	ret
+
+L4:
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	mrmovq $8(%rdi), %r11
+	rmmovq %r11, $8(%rsi)
+	mrmovq $16(%rdi), %r12
+	rmmovq %r12, $16(%rsi)
+	mrmovq $24(%rdi), %r13
+	rmmovq %r13, $24(%rsi)
+	andq %r10, %r10
+	jle L5
+	iaddq $1, %rax
+L5:
+	andq %r11, %r11
+	jle L6
+	iaddq $1, %rax
+L6:
+	andq %r12, %r12
+	jle L7
+	iaddq $1, %rax
+L7:
+	andq %r13, %r13
+	jle L8
+	iaddq $1, %rax
+L8:	
+	iaddq $32, %rdi
+	iaddq $32, %rsi
+	iaddq $0, %rdx
+	jg ncopy
+Done:
+	ret
 ```
