@@ -1,0 +1,80 @@
+ncopy:
+	andq %rdx, %rdx
+	jle Done # len <= 0 -> Done rdx = 1 || rdx = 2 || rdx = 3
+	iaddq $-4, %rdx # rdx -= 3
+	jge L4
+L0: # rdx == -1 || rdx == -2 || rdx == -3
+	iaddq $2, %rdx
+	jg L1
+	iaddq $1, %rdx
+	jg L22
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)	
+	andq %r10, %r10 # val <= 0?
+	jle Done
+	iaddq $1, %rax
+	ret
+L22: #2
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	mrmovq $8(%rdi), %r11
+	rmmovq %r11, $8(%rsi)
+	andq %r10, %r10
+	jle L23
+	iaddq $1, %rax
+L23:
+	andq %r11, %r11
+	jle Done
+	iaddq $1, %rax
+	ret
+L1: # 3
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	mrmovq $8(%rdi), %r11
+	rmmovq %r11, $8(%rsi)
+	mrmovq $16(%rdi), %r12
+	rmmovq %r12, $16(%rsi)
+	andq %r10, %r10
+	jle L2
+	iaddq $1, %rax
+L2:
+	andq %r11, %r11
+	jle L3
+	iaddq $1, %rax
+L3:
+	andq %r12, %r12
+	jle Done
+	iaddq $1, %rax
+	ret
+
+L4:
+	mrmovq (%rdi), %r10
+	rmmovq %r10, (%rsi)
+	mrmovq $8(%rdi), %r11
+	rmmovq %r11, $8(%rsi)
+	mrmovq $16(%rdi), %r12
+	rmmovq %r12, $16(%rsi)
+	mrmovq $24(%rdi), %r13
+	rmmovq %r13, $24(%rsi)
+	andq %r10, %r10
+	jle L5
+	iaddq $1, %rax
+L5:
+	andq %r11, %r11
+	jle L6
+	iaddq $1, %rax
+L6:
+	andq %r12, %r12
+	jle L7
+	iaddq $1, %rax
+L7:
+	andq %r13, %r13
+	jle L8
+	iaddq $1, %rax
+L8:	
+	iaddq $32, %rdi
+	iaddq $32, %rsi
+	iaddq $0, %rdx
+	jg ncopy
+Done:
+	ret
