@@ -1701,8 +1701,198 @@ else{
     }
   }
 ```
+## lab7-shlab ##
+[文件下载链接](https://link.zhihu.com/?target=http%3A//csapp.cs.cmu.edu/3e/shlab-handout.tar)
+工作文件tsh.c
+tsh支持的四个命令
+1.quit
+2.jobs
+3.fg
+4.bg
+需要实现的函数有:
+1.eval
+2.builtin_cmd
+3.do_bgfg
+4.waitfg
+5.sigchld_handler
+6.sigint_handler
+7sigtstp_handler
+需要使用的相关内置信号函数有sigfillset/sigemptyset/sigaddset/sigprocmask/setpgid
+用法参考:[链接](https://www.cnblogs.com/52php/p/5815125.html)
+检查方法:
+make然后使用****.sh脚本如下，接着对比文件就可以了
+```sh
+diff tshref.out tsh.out > diff.out
+```
+sh脚本
+```sh
+#!/bin/bash
+
+list="test01 test02 test03 test04 test05 test06 test07 test08 test09 test10 test11 test12 test13 test14 test15 test16"
+
+rm tsh.out
+
+for task in $list
+do
+	make $task >> tsh.out
+	echo "make $task done."
+done
+```
+
+### eval ###
+```c
+    int parse_result;
+    int state;
+    pid_t pid;
+    char *argv[MAXARGS];
+    char buf[MAXLINE];
+    int parse_result;
+    
+    strcpy(buf, cmdline);
+    parse_result = parseline(buf, argv);
+    if (argv[0] == NULL)
+    {
+        return;
+    }
+
+    sigset_t mask_all, mask_one, prev_one;
+    sigfillset(&mask_all);//把信号集初始化包含所有已定义的信号
+    sigemptyset(&mask_one);//将信号集初始化为空
+    sigaddset(&mask_one, SIGCHLD);//把信号SIGCHLD添加到信号集mask_one中
+    
+    if (!builtin_cmd(argv))//判断内置命令
+    {
+        sigprocmask(SIG_SETMASK, &prev_one, NULL);//信号屏蔽字设为SIGCHLD，阻塞child，这里是为了防止导致条件竞争的信号阻塞
+        if ((pid == fork()) == 0)
+        {
+            sigprocmask(SIG_SETMASK, &prev_one, NULL);//子进程继承了父进程的阻塞向量
+            if (setpgid(0, 0) < 0)//这里重新设置了进程组号
+	    //将使子进程放入一个新的进程组中，保证bash前台进程组中只有一个进程，即tsh进程。
+            {
+              unix_error("SETPGID error");
+            }
+            if (execve(argv[0], argv, environ) < 0)
+                unix_error("EXECVE error");
+        }
+
+        state = parse_result ? BG : FG;//判断前台还是后台命令
+        sigprocmask(SIG_BLOCK, &mask_all, NULL);//阻塞所有信号
+        addjob(jobs, pid, state, cmdline);
+        sigprocmask(SIG_SETMASK, &prev_one, NULL);
+
+        if (!parse_result)
+            waitfg(pid);
+        else
+            printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
+
+    }
+```
+
+### builtin_cmd ###
+```c
+if (!strcmp(argv[0],"quit"))
+      exit(0);
+
+    else if (!strcmp(argv[0],"jobs"))
+      listjobs(jobs);
+
+    else if (!strcmp(argv[0],"fg")  || !strcmp(argv[0],"bg"))
+        do_bgfg(argv);
+
+  else if (!strcmp(argv[0],"&"))
+    {
+        return 1;
+    } 
+    return 0;
+```
+
+### do_bgfg ###
+```c
+if (!strcmp(argv[0], "bg"))
+    {
+        sigset_t mask_all, prev_all;
+        sigfillset(&mask_all);
+        struct job_t* job;
+        if (argv[1][0] == '%')//这里操作进程组
+        {
+            int jid = atoi(&argv[1][1]);
+            sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+            job = getjobjid(jobs, jid);
+            sigprocmask(SIG_SETMASK, &prev_all, NULL);
+        }
+        else//这里操作进程
+        {
+            pid_t pid = atoi(argv[1]);
+            sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+            job = getjobpid(jobs, pid);
+            sigprocmask(SIG_SETMASK, &prev_all, NULL);
+        }
+        if (kill(-job->pid, SIGCONT) < 0)
+            unix_error("SIGCONT error");
+        job->state = BG;
+        printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline)
+    }
+```
+
+### waitfg ###
+```c
+sigset_t mask_empty;
+    sigemptyset(&mask_empty);
+    while (fgpid(jobs) > 0)
+        sigsuspend(&mask_empty);//依次将前台运行的进程挂起
+    return;
+```
+
+### sigchld_handler ###
+```c
+int olderrno = errno;
+    int statusp;
+    pid_t pid;
+    sigset_t mask_all, prev_all;
+    sigfillset(&mask_all);
+    while ((pid = waitpid(-1, &statusp, WNOHANG | WUNTRACED)) > 0)
+    {
+        if (WIFEXITED(statusp))//正常退出
+        {
+            sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+            deletejob(jobs, pid);
+            sigprocmask(SIG_SETMASK, &prev_all, NULL);
+        }
+        else if (WIFSIGNALED(statusp))//子进程因为信号终止
+        {
+            sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+            printf("Job [%d] (%d) terminated by signal %d\n",pid2jid(pid), pid, SIGINT);
+            deletejob(jobs, pid);
+            sigprocmask(SIG_SETMASK, &prev_all, NULL);
+        }
+        else {//停止状态
+            sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+            struct job_t* job = getjobpid(jobs, pid);
+            job->state = ST;
+            printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(pid), pid, SIGTSTP);
+            sigprocmask(SIG_SETMASK, &prev_all, NULL);
+        }
+
+    }
+    errno = olderrno;
+    return;
+```
+
+### sigint_handler 和 sigtstp_handler ###
+```c
+int olderrno=errno;
+    pid_t pid=fgpid(jobs);
+    if(pid!=0){
+        kill(-pid,sig);
+    }
+    errno=olderrno;
+    return;
+```
 
 ## 参考资料 ##
 1.[attachlab](https://blog.csdn.net/weixin_41256413/article/details/80463280)
 2.[cachelab思路](https://zhuanlan.zhihu.com/p/456858668)
 3.[cachelab思路](https://zhuanlan.zhihu.com/p/79058089)
+4.[shelllab思路](https://blog.csdn.net/qq_42241839/article/details/123227742)
+5.[shelllab-ref1](https://github.com/BillyoTry/learning-record/blob/main/Kernel%20basis/shlab.md)
+6.[shelllab-ref2](https://blog.csdn.net/qq_42241839/article/details/123227742)
